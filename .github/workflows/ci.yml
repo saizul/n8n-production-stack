@@ -32,8 +32,10 @@ jobs:
 
       - name: Validate Caddyfile
         run: |
-          set -a; . ./.env; set +a
-          docker run --rm -e N8N_HOST -e ACME_EMAIL -e WEBHOOK_UPSTREAM=n8n-main:5678 \
+          # read only the values Caddy needs (some .env values contain spaces, e.g. cron schedules)
+          N8N_HOST="$(grep -E '^N8N_HOST=' .env | cut -d= -f2-)"
+          ACME_EMAIL="$(grep -E '^ACME_EMAIL=' .env | cut -d= -f2-)"
+          docker run --rm -e N8N_HOST="$N8N_HOST" -e ACME_EMAIL="$ACME_EMAIL" -e WEBHOOK_UPSTREAM=n8n-main:5678 \
             -v "$PWD/caddy/Caddyfile:/etc/caddy/Caddyfile:ro" \
             caddy:2.11.9-alpine caddy validate --config /etc/caddy/Caddyfile
 
