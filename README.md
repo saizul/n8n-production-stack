@@ -217,3 +217,13 @@ When bumping PostgreSQL to a new **major** version, do a dump and restore into a
 ## License
 
 [MIT](LICENSE) (c) Saizul Amin
+
+## Prebuilt backup image
+
+The backup container is also published to GitHub Container Registry on every change, for amd64 and arm64:
+
+```bash
+docker pull ghcr.io/saizul/n8n-stack-backup:latest
+```
+
+The compose file builds it locally by default; you can point the `backup` service at this image instead of `build: ./backup` if you prefer pulling.
