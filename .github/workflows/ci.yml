@@ -1,0 +1,58 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Generate test .env
+        run: ./scripts/init.sh --domain n8n.ci.example.com --email ci@example.com
+
+      - name: init.sh refuses to overwrite
+        run: |
+          if ./scripts/init.sh --domain a.example.com --email a@example.com; then
+            echo "init.sh overwrote an existing .env" >&2
+            exit 1
+          fi
+
+      - name: docker compose config
+        run: docker compose config --quiet
+
+      - name: docker compose config (webhook profile)
+        run: docker compose --profile webhook config --quiet
+
+      - name: Validate Caddyfile
+        run: |
+          set -a; . ./.env; set +a
+          docker run --rm -e N8N_HOST -e ACME_EMAIL -e WEBHOOK_UPSTREAM=n8n-main:5678 \
+            -v "$PWD/caddy/Caddyfile:/etc/caddy/Caddyfile:ro" \
+            caddy:2.11.9-alpine caddy validate --config /etc/caddy/Caddyfile
+
+      - name: Build backup image
+        run: docker compose build backup
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: bash -n
+        run: |
+          for f in scripts/*.sh backup/*.sh; do bash -n "$f"; done
+
+      - name: shellcheck
+        run: shellcheck -x scripts/*.sh backup/*.sh
+
+      - name: yamllint
+        run: |
+          pip install --quiet yamllint
+          yamllint -c .yamllint compose.yaml .github/workflows

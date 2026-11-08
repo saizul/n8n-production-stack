@@ -1,0 +1,37 @@
+{
+	# Let's Encrypt registration / expiry notices
+	email {$ACME_EMAIL}
+}
+
+{$N8N_HOST} {
+	encode zstd gzip
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "SAMEORIGIN"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()"
+		Cross-Origin-Opener-Policy "same-origin-allow-popups"
+		-Server
+	}
+
+	# Production webhook traffic. Goes to the dedicated webhook processors when
+	# WEBHOOK_UPSTREAM=n8n-webhook:5678, otherwise to the main instance.
+	@webhooks path /webhook/* /webhook-waiting/*
+	handle @webhooks {
+		reverse_proxy {$WEBHOOK_UPSTREAM:n8n-main:5678}
+	}
+
+	# Editor, REST API, test webhooks, websockets and SSE push.
+	handle {
+		reverse_proxy n8n-main:5678 {
+			flush_interval -1
+		}
+	}
+
+	log {
+		output stdout
+		format console
+	}
+}
