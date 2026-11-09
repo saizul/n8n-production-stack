@@ -33,7 +33,7 @@ jobs:
             type=semver,pattern={{version}}
           labels: |
             org.opencontainers.image.title=n8n-stack-backup
-            org.opencontainers.image.description=Scheduled PostgreSQL backups with retention and optional rclone/S3 upload for n8n-production-stack
+            org.opencontainers.image.description=Scheduled Postgres backups with retention and S3 upload for n8n-production-stack
             org.opencontainers.image.licenses=MIT
       - uses: docker/build-push-action@v6
         with:
