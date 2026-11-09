@@ -166,7 +166,14 @@ Use a bucket-scoped key with write and delete permission only for that bucket. T
 
 ### Test your restores
 
-A backup you have never restored is a hope, not a backup. Restore into a staging copy of the stack at least quarterly.
+A backup you have never restored is a hope, not a backup. Verify a dump without touching production:
+
+```bash
+make restore-test                 # latest dump in the backup volume
+make restore-test FILE=/path/to/file.dump
+```
+
+`restore-test.sh` starts a throwaway container from the same PostgreSQL image as the stack (no network, removed afterwards), restores the dump into it and checks that the core n8n tables exist, printing their row counts. The live database and containers are not modified. Still restore into a staging copy of the full stack at least quarterly.
 
 ## Upgrading
 
@@ -205,14 +212,14 @@ When bumping PostgreSQL to a new **major** version, do a dump and restore into a
 ├── Makefile
 ├── caddy/Caddyfile
 ├── backup/{Dockerfile,entrypoint.sh,dump.sh}
-├── scripts/{common,init,backup,restore,update,healthcheck}.sh
+├── scripts/{common,init,backup,restore,restore-test,update,healthcheck}.sh
 ├── .github/workflows/ci.yml
 ├── README.md  TROUBLESHOOTING.md  CHANGELOG.md  CONTRIBUTING.md  LICENSE
 ```
 
 ## Makefile targets
 
-`make help` lists them: `init`, `up`, `down`, `restart`, `logs [SERVICE=]`, `ps`, `backup`, `restore FILE=`, `update [VERSION=]`, `scale WORKERS=`, `health`, `config`, `lint`.
+`make help` lists them: `init`, `up`, `down`, `restart`, `logs [SERVICE=]`, `ps`, `backup`, `restore FILE=`, `restore-test FILE=`, `update [VERSION=]`, `scale WORKERS=`, `health`, `config`, `lint`.
 
 ## License
 
