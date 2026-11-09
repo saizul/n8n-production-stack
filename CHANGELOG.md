@@ -2,6 +2,11 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+- `scripts/restore-test.sh` and `make restore-test`: restore a dump into a throwaway PostgreSQL container and verify the core n8n tables, without touching the live stack.
+
 ## [1.0.0] - 2026-11-08
 
 ### Added

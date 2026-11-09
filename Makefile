@@ -5,7 +5,7 @@ WORKERS ?= 2
 SERVICE ?=
 FILE ?= latest
 
-.PHONY: help init up down restart logs ps backup restore update scale health config lint
+.PHONY: help init up down restart logs ps backup restore restore-test update scale health config lint
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  \033[36m%-10s\033[0m %s\n", $$1, $$2}'
@@ -33,6 +33,9 @@ backup: ## Run a backup now and copy it to ./backups
 
 restore: ## Restore a backup (FILE=latest | name | /path/to.dump)
 	./scripts/restore.sh $(FILE)
+
+restore-test: ## Verify a backup in a throwaway Postgres container (FILE=latest)
+	./scripts/restore-test.sh $(FILE)
 
 update: ## Pull images, back up, recreate (VERSION=2.46.7 to change n8n)
 	./scripts/update.sh $(VERSION)
