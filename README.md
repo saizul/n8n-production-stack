@@ -13,7 +13,8 @@ Maintained by [Saizul Amin](https://saizul.com). MIT licensed.
 - Backup container: scheduled `pg_dump` (cron), verified dumps, local retention, optional S3-compatible upload (AWS S3, Backblaze B2, Cloudflare R2, MinIO, Wasabi) via rclone.
 - Healthchecks on every service, `restart: unless-stopped`, CPU/memory limits, log rotation, `no-new-privileges`, named volumes.
 - Helper scripts and a Makefile for init, backup, restore, update and health checks.
-- Pinned image versions; CI validates the Compose file, Caddyfile, scripts and YAML.
+- `.env` preflight check (`make preflight`): catches placeholder or weak secrets, malformed domains and inconsistent profile/S3 settings before anything starts.
+- Pinned image versions; CI validates the Compose file, Caddyfile, scripts and YAML, and runs a bats test suite for the scripts.
 
 ## Architecture
 
@@ -79,6 +80,7 @@ git clone https://github.com/saizulamin/n8n-production-stack.git
 cd n8n-production-stack
 
 ./scripts/init.sh --domain n8n.example.com --email you@example.com
+make preflight
 make up
 make health
 ```
@@ -86,6 +88,30 @@ make health
 Open `https://n8n.example.com` and create the owner account. n8n's built-in user management protects the instance, so no extra basic auth layer is needed.
 
 `init.sh` copies `.env.example` to `.env` (mode `600`), generates the PostgreSQL password, Redis password and `N8N_ENCRYPTION_KEY` with `openssl rand`, and refuses to overwrite an existing `.env`.
+
+### Preflight check
+
+`make up` and `scripts/update.sh` run `scripts/preflight.sh` first and stop if `.env` has errors. Run it on its own after editing `.env`:
+
+```bash
+make preflight
+./scripts/preflight.sh --strict              # also fail on warnings
+./scripts/preflight.sh --env-file staging.env --quiet
+```
+
+It reads `.env` without evaluating it and never prints secret values. Exit code `0` means no errors, `1` errors (or warnings with `--strict`), `2` a usage error.
+
+| Check | Error | Warning |
+|---|---|---|
+| Required variables | `N8N_HOST`, `ACME_EMAIL`, `POSTGRES_DB/USER/PASSWORD`, `REDIS_PASSWORD`, `N8N_ENCRYPTION_KEY` missing or empty | |
+| Secrets | `CHANGE_ME` placeholders, well-known weak values, passwords under 16 or an encryption key under 32 characters, a single repeated character, `$NAME` that Compose would interpolate, encryption key reused as a password | Postgres and Redis share a password; spaces, quotes, `#` or backslashes |
+| Domain and e-mail | Scheme, path, port or invalid FQDN in `N8N_HOST`; malformed `ACME_EMAIL` | Reserved domains (`example.com`, `.test`, `.local`, ...), IP addresses, upper case |
+| Versions and tuning | `N8N_VERSION` not an exact `x.y.z`; non-numeric replicas, concurrency or retention; invalid log level or booleans; bad PostgreSQL identifiers | Unusually high replica or concurrency counts, `debug` logging |
+| Webhook profile | `COMPOSE_PROFILES=webhook` without `WEBHOOK_UPSTREAM=n8n-webhook:5678`, or the reverse; `N8N_DISABLE_PRODUCTION_MAIN_PROCESS=true` without the profile | Profile enabled while the main process still serves production webhooks |
+| Backups | `BACKUP_SCHEDULE` without 5 cron fields; S3 bucket without keys, invalid bucket name, non-AWS provider without an `https://` endpoint | No off-site bucket configured, plain `http://` endpoint |
+| File | | `.env` not mode `600`/`400`, CRLF line endings, duplicate keys |
+
+To start the stack while deliberately ignoring the check, call `docker compose up -d` directly.
 
 ## Configuration
 
@@ -212,14 +238,23 @@ When bumping PostgreSQL to a new **major** version, do a dump and restore into a
 ├── Makefile
 ├── caddy/Caddyfile
 ├── backup/{Dockerfile,entrypoint.sh,dump.sh}
-├── scripts/{common,init,backup,restore,restore-test,update,healthcheck}.sh
+├── scripts/{common,init,preflight,backup,restore,restore-test,update,healthcheck}.sh
+├── tests/*.bats                  # bats suite, Docker stubbed out
 ├── .github/workflows/ci.yml
 ├── README.md  TROUBLESHOOTING.md  CHANGELOG.md  CONTRIBUTING.md  LICENSE
 ```
 
 ## Makefile targets
 
-`make help` lists them: `init`, `up`, `down`, `restart`, `logs [SERVICE=]`, `ps`, `backup`, `restore FILE=`, `restore-test FILE=`, `update [VERSION=]`, `scale WORKERS=`, `health`, `config`, `lint`.
+`make help` lists them: `init`, `preflight`, `up`, `down`, `restart`, `logs [SERVICE=]`, `ps`, `backup`, `restore FILE=`, `restore-test FILE=`, `update [VERSION=]`, `scale WORKERS=`, `health`, `config`, `lint`, `test`.
+
+## Tests
+
+The scripts are covered by a [bats-core](https://github.com/bats-core/bats-core) suite in `tests/`. Each test runs against a temporary copy of the repository with `docker` replaced by a stub, so it needs neither Docker nor a `.env`, and never touches a running stack.
+
+```bash
+make test            # or: bats tests/
+```
 
 ## License
 

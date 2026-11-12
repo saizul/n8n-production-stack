@@ -24,6 +24,17 @@ jobs:
             exit 1
           fi
 
+      - name: Preflight check of the generated .env
+        # the CI domain is a placeholder, so this reports a warning but must not fail
+        run: ./scripts/preflight.sh
+
+      - name: Preflight rejects the untouched template
+        run: |
+          if ./scripts/preflight.sh --env-file .env.example --quiet; then
+            echo "preflight accepted CHANGE_ME placeholders" >&2
+            exit 1
+          fi
+
       - name: docker compose config
         run: docker compose config --quiet
 
@@ -52,9 +63,20 @@ jobs:
           for f in scripts/*.sh backup/*.sh; do bash -n "$f"; done
 
       - name: shellcheck
-        run: shellcheck -x scripts/*.sh backup/*.sh
+        run: shellcheck -x scripts/*.sh backup/*.sh tests/*.bats tests/*.bash
 
       - name: yamllint
         run: |
           pip install --quiet yamllint
           yamllint -c .yamllint compose.yaml .github/workflows
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install bats
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq bats
+
+      - name: bats
+        run: bats tests/

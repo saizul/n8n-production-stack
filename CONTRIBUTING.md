@@ -14,7 +14,9 @@ Thanks for helping improve this stack. Bug reports, documentation fixes and focu
 ./scripts/init.sh --domain n8n.test.example --email dev@example.com
 docker compose config --quiet
 docker compose --profile webhook config --quiet
+make preflight
 make lint
+make test        # needs bats-core: apt install bats / brew install bats-core
 pip install yamllint && yamllint -c .yamllint compose.yaml .github/workflows
 ```
 
@@ -25,6 +27,8 @@ CI runs the same checks. For runtime changes, bring the stack up on a test serve
 - Start with `#!/usr/bin/env bash` and `set -euo pipefail`.
 - Must pass `bash -n` and `shellcheck -x` without warnings.
 - Quote variables, prefer `die`/`log`/`warn` helpers from `scripts/common.sh`.
+- Add or update a test in `tests/` for behaviour changes. Tests must not need Docker: use the stub and sandbox from `tests/test_helper.bash`.
+- New `.env` settings that can be misconfigured should get a check in `scripts/preflight.sh`.
 
 ## Bumping versions
 
