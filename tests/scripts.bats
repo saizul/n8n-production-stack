@@ -40,7 +40,7 @@ setup() {
 
 @test "restore.sh aborts unless 'restore' is typed" {
   make_env
-  run bash -c 'printf "no\n" | ./scripts/restore.sh latest'
+  run bash -c 'printf "no\n" | ./scripts/restore.sh n8n-test.dump'
   [ "$status" -eq 1 ]
   [[ "$output" == *"aborted"* ]]
   run grep -c 'pg_restore --clean' "$DOCKER_LOG"
