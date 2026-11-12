@@ -6,6 +6,10 @@ Start with `make ps` and `make logs SERVICE=<name>`, then `./scripts/healthcheck
 
 `.env` is missing or incomplete. Run `./scripts/init.sh`, then set `N8N_HOST` and `ACME_EMAIL`.
 
+## `make up` stops with "preflight: N error(s)"
+
+`scripts/preflight.sh` found a problem in `.env`; each `FAIL` line names the variable and the fix. Correct it and run `make preflight` again. Warnings (`WARN`) do not block the start. See the README section "Preflight check" for the full list.
+
 ## No HTTPS certificate / browser shows a certificate error
 
 - `make logs SERVICE=caddy` and look for ACME errors.

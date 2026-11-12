@@ -14,6 +14,8 @@ if [ -n "$NEW_VERSION" ]; then
   export N8N_VERSION="$NEW_VERSION"
 fi
 
+"$ROOT_DIR/scripts/preflight.sh" --quiet || die ".env failed the preflight check; fix the errors above before updating"
+
 log "Pulling images (n8n ${N8N_VERSION:-$(env_get N8N_VERSION)})"
 compose pull
 compose build --pull backup

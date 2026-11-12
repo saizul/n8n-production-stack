@@ -5,7 +5,7 @@ WORKERS ?= 2
 SERVICE ?=
 FILE ?= latest
 
-.PHONY: help init up down restart logs ps backup restore restore-test update scale health config lint
+.PHONY: help init preflight up down restart logs ps backup restore restore-test update scale health config lint test
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  \033[36m%-10s\033[0m %s\n", $$1, $$2}'
@@ -13,7 +13,10 @@ help: ## Show this help
 init: ## Generate .env with random secrets (refuses to overwrite)
 	./scripts/init.sh
 
-up: ## Build and start the stack in the background
+preflight: ## Validate .env (required vars, weak secrets, domain, profiles)
+	./scripts/preflight.sh
+
+up: preflight ## Validate .env, then build and start the stack in the background
 	docker compose up -d --build --remove-orphans
 
 down: ## Stop and remove containers (volumes are kept)
@@ -49,6 +52,9 @@ health: ## Check health of every container
 config: ## Validate and print the resolved compose file
 	docker compose config
 
-lint: ## bash -n and shellcheck on all scripts
+lint: ## bash -n and shellcheck on all scripts and tests
 	@for f in scripts/*.sh backup/*.sh; do bash -n "$$f" || exit 1; done
-	@if command -v shellcheck >/dev/null; then shellcheck -x scripts/*.sh backup/*.sh; else echo "shellcheck not installed, skipped"; fi
+	@if command -v shellcheck >/dev/null; then shellcheck -x scripts/*.sh backup/*.sh tests/*.bats tests/*.bash; else echo "shellcheck not installed, skipped"; fi
+
+test: ## Run the bats test suite (needs bats-core, no Docker required)
+	bats tests/
