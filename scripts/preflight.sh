@@ -373,6 +373,62 @@ check_backups() {
   esac
 }
 
+# --- Backup monitoring --------------------------------------------------------------
+# check_monitor_url KEY: validate a monitor URL without printing it (it usually
+# embeds a secret token).
+check_monitor_url() {
+  local key="$1" url
+  url="$(val "$key")"
+  [ -n "$url" ] || return 0
+  case "$url" in
+    https://?*) ;;
+    http://?*) note "$key uses plain http; the ping (and its token) travels unencrypted" ;;
+    *) fail "$key must be an http(s) URL"; return ;;
+  esac
+  if [[ "$url" =~ [[:space:]] ]]; then
+    fail "$key must not contain spaces"
+  elif is_placeholder "$url"; then
+    fail "$key still contains a placeholder"
+  fi
+}
+
+check_backup_monitoring() {
+  local max_age schedule dom dow url fail_url
+  check_int BACKUP_MAX_AGE_HOURS 0 2160
+  check_monitor_url BACKUP_HEALTHCHECK_URL
+  check_monitor_url BACKUP_HEALTHCHECK_FAIL_URL
+
+  url="$(val BACKUP_HEALTHCHECK_URL)"
+  fail_url="$(val BACKUP_HEALTHCHECK_FAIL_URL)"
+  if [ -z "$url" ] && [ -n "$fail_url" ]; then
+    note "BACKUP_HEALTHCHECK_FAIL_URL is set without BACKUP_HEALTHCHECK_URL: failures are reported, but a backup that never runs is not"
+  elif [ -z "$url" ]; then
+    note "BACKUP_HEALTHCHECK_URL is empty: nobody is alerted when a backup fails or stops running"
+  else
+    ok "backup monitor ping is configured"
+  fi
+
+  # A weekly or monthly schedule with the default 26h limit would mark the
+  # backup container unhealthy most of the time.
+  max_age="$(val BACKUP_MAX_AGE_HOURS)"
+  max_age="${max_age:-26}"
+  [[ "$max_age" =~ ^[0-9]+$ ]] || return 0
+  [ "$max_age" -gt 0 ] || return 0
+  schedule="$(val BACKUP_SCHEDULE)"
+  case "$schedule" in
+    @weekly) dow=0 ;;
+    @monthly|@yearly|@annually) dom=1 ;;
+    *)
+      dom="$(printf '%s' "$schedule" | awk 'NF == 5 {print $3}')"
+      dow="$(printf '%s' "$schedule" | awk 'NF == 5 {print $5}')" ;;
+  esac
+  if { [ -n "${dom:-}" ] && [ "${dom:-}" != "*" ]; } && [ "$max_age" -lt 745 ]; then
+    note "BACKUP_SCHEDULE runs only on some days of the month but BACKUP_MAX_AGE_HOURS is ${max_age}; raise it (e.g. 745) or the backup container reports unhealthy between runs"
+  elif { [ -n "${dow:-}" ] && [ "${dow:-}" != "*" ]; } && [ "$max_age" -lt 170 ]; then
+    note "BACKUP_SCHEDULE runs only on some weekdays but BACKUP_MAX_AGE_HOURS is ${max_age}; raise it (e.g. 170) or the backup container reports unhealthy between runs"
+  fi
+}
+
 # --- Run --------------------------------------------------------------------------
 [ "$QUIET" -eq 1 ] || log "Checking $ENV_FILE"
 check_file
@@ -389,6 +445,7 @@ check_tuning
 check_booleans
 check_webhook_profile
 check_backups
+check_backup_monitoring
 
 if [ "$QUIET" -eq 0 ] && [ -n "$(val N8N_ENCRYPTION_KEY)" ]; then
   printf '  note  keep a copy of N8N_ENCRYPTION_KEY outside this server (password manager)\n'

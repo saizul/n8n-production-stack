@@ -10,7 +10,7 @@ Maintained by [Saizul Amin](https://saizul.com). MIT licensed.
 - Optional dedicated webhook processor, enabled with a Compose profile; Caddy routes `/webhook/*` and `/webhook-waiting/*` to it.
 - PostgreSQL 16 and Redis 7 on an **internal-only** Docker network: no published ports.
 - Caddy reverse proxy with automatic Let's Encrypt certificates, HTTP/3, compression and security headers.
-- Backup container: scheduled `pg_dump` (cron), verified dumps, local retention, optional S3-compatible upload (AWS S3, Backblaze B2, Cloudflare R2, MinIO, Wasabi) via rclone.
+- Backup container: scheduled `pg_dump` (cron), verified dumps, local retention, optional S3-compatible upload (AWS S3, Backblaze B2, Cloudflare R2, MinIO, Wasabi) via rclone, and backup monitoring (freshness healthcheck, `make backup-status`, dead man's switch pings for healthchecks.io or Uptime Kuma).
 - Healthchecks on every service, `restart: unless-stopped`, CPU/memory limits, log rotation, `no-new-privileges`, named volumes.
 - Helper scripts and a Makefile for init, backup, restore, update and health checks.
 - `.env` preflight check (`make preflight`): catches placeholder or weak secrets, malformed domains and inconsistent profile/S3 settings before anything starts.
@@ -109,6 +109,7 @@ It reads `.env` without evaluating it and never prints secret values. Exit code 
 | Versions and tuning | `N8N_VERSION` not an exact `x.y.z`; non-numeric replicas, concurrency or retention; invalid log level or booleans; bad PostgreSQL identifiers | Unusually high replica or concurrency counts, `debug` logging |
 | Webhook profile | `COMPOSE_PROFILES=webhook` without `WEBHOOK_UPSTREAM=n8n-webhook:5678`, or the reverse; `N8N_DISABLE_PRODUCTION_MAIN_PROCESS=true` without the profile | Profile enabled while the main process still serves production webhooks |
 | Backups | `BACKUP_SCHEDULE` without 5 cron fields; S3 bucket without keys, invalid bucket name, non-AWS provider without an `https://` endpoint | No off-site bucket configured, plain `http://` endpoint |
+| Backup monitoring | `BACKUP_MAX_AGE_HOURS` not a whole number; monitor URL that is not `http(s)://`, contains spaces or a placeholder | No `BACKUP_HEALTHCHECK_URL`, plain `http://` monitor URL, a weekly/monthly `BACKUP_SCHEDULE` with an age limit shorter than the interval |
 | File | | `.env` not mode `600`/`400`, CRLF line endings, duplicate keys |
 
 To start the stack while deliberately ignoring the check, call `docker compose up -d` directly.
@@ -185,6 +186,28 @@ BACKUP_S3_RETENTION_DAYS=30
 
 Use a bucket-scoped key with write and delete permission only for that bucket. Then `docker compose up -d backup`.
 
+### Backup monitoring
+
+A backup job that silently stopped running is only discovered on the day you need it. Every run of `dump.sh` records its outcome in the backup volume (`.last_success` / `.last_failure`), and three things read it:
+
+- **Container healthcheck.** The `backup` container turns `unhealthy` when the last run failed or the last success is older than `BACKUP_MAX_AGE_HOURS` (default `26`, a daily schedule plus slack; `0` disables the age check). A fresh install with no backup yet stays healthy. `make health` and `update.sh` therefore notice broken backups too.
+- **`make backup-status`** prints the last success and failure, the age limit and the local dumps. It exits `0` when everything is fine or no backup has run yet, `1` when the last run failed or is stale, `3` when the backup container is not running. Use `--json` for monitoring agents or `--quiet` in a host cron job:
+
+  ```bash
+  ./scripts/backup-status.sh                  # human-readable
+  ./scripts/backup-status.sh --json           # {"status":"ok","last_success":...,"dumps":14,...}
+  ./scripts/backup-status.sh --max-age 170    # one-off check with a weekly limit
+  ```
+
+- **Dead man's switch (optional).** Set `BACKUP_HEALTHCHECK_URL` to a [healthchecks.io](https://healthchecks.io) check (or a self-hosted instance) or an Uptime Kuma push monitor. It is pinged after every successful backup, so the monitor alerts you when a run fails *or never happens* (server down, cron dead, disk full). Failures are also reported immediately to `<url>/fail`, or to `BACKUP_HEALTHCHECK_FAIL_URL` if you set one (needed for URLs with a query string, e.g. `...?status=down` for Uptime Kuma). Pings use a 10 s timeout with retries and never fail the backup itself. The URL usually contains a token, so it is never logged or printed by `preflight.sh`.
+
+  ```
+  BACKUP_HEALTHCHECK_URL=https://hc-ping.com/<your-check-uuid>
+  BACKUP_MAX_AGE_HOURS=26
+  ```
+
+  then `docker compose up -d --build backup`. Set the monitor's period to match `BACKUP_SCHEDULE` and its grace time to a few hours.
+
 ### What is NOT in the database dump
 
 - `.env`, especially `N8N_ENCRYPTION_KEY`. Store a copy in a password manager. A database restore on a new server needs the **same** key.
@@ -226,6 +249,7 @@ When bumping PostgreSQL to a new **major** version, do a dump and restore into a
 - [ ] Keep `.env` at mode `600` and the host patched (`unattended-upgrades`).
 - [ ] Use SSH keys only, disable password login.
 - [ ] Off-site backups with a scoped key; test restores regularly.
+- [ ] Backup monitoring: `BACKUP_HEALTHCHECK_URL` points at a check that alerts you when backups stop.
 - [ ] Update on a schedule and read n8n security advisories.
 - [ ] Monitor disk usage: execution data, Docker logs (rotated at 5 x 10 MB per container) and backups all grow.
 
@@ -237,8 +261,8 @@ When bumping PostgreSQL to a new **major** version, do a dump and restore into a
 ├── .env.example
 ├── Makefile
 ├── caddy/Caddyfile
-├── backup/{Dockerfile,entrypoint.sh,dump.sh}
-├── scripts/{common,init,preflight,backup,restore,restore-test,update,healthcheck}.sh
+├── backup/{Dockerfile,entrypoint.sh,dump.sh,status.sh}
+├── scripts/{common,init,preflight,backup,backup-status,restore,restore-test,update,healthcheck}.sh
 ├── tests/*.bats                  # bats suite, Docker stubbed out
 ├── .github/workflows/ci.yml
 ├── README.md  TROUBLESHOOTING.md  CHANGELOG.md  CONTRIBUTING.md  LICENSE
@@ -246,7 +270,7 @@ When bumping PostgreSQL to a new **major** version, do a dump and restore into a
 
 ## Makefile targets
 
-`make help` lists them: `init`, `preflight`, `up`, `down`, `restart`, `logs [SERVICE=]`, `ps`, `backup`, `restore FILE=`, `restore-test FILE=`, `update [VERSION=]`, `scale WORKERS=`, `health`, `config`, `lint`, `test`.
+`make help` lists them: `init`, `preflight`, `up`, `down`, `restart`, `logs [SERVICE=]`, `ps`, `backup`, `backup-status`, `restore FILE=`, `restore-test FILE=`, `update [VERSION=]`, `scale WORKERS=`, `health`, `config`, `lint`, `test`.
 
 ## Tests
 

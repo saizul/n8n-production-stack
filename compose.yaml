@@ -256,6 +256,9 @@ services:
       S3_REGION: ${S3_REGION:-us-east-1}
       S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:-}
       S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:-}
+      BACKUP_MAX_AGE_HOURS: ${BACKUP_MAX_AGE_HOURS:-26}
+      BACKUP_HEALTHCHECK_URL: ${BACKUP_HEALTHCHECK_URL:-}
+      BACKUP_HEALTHCHECK_FAIL_URL: ${BACKUP_HEALTHCHECK_FAIL_URL:-}
     volumes:
       - backups:/backups
     networks:
@@ -265,7 +268,9 @@ services:
       postgres:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -q && pgrep crond >/dev/null"]
+      # unhealthy when Postgres is unreachable, cron died, the last run failed
+      # or the last success is older than BACKUP_MAX_AGE_HOURS
+      test: ["CMD-SHELL", "pg_isready -q && pgrep crond >/dev/null && /usr/local/bin/status.sh --quiet"]
       interval: 60s
       timeout: 10s
       retries: 3
