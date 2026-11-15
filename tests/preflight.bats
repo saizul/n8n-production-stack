@@ -307,5 +307,72 @@ setup() {
   [ "$status" -eq 0 ]
   [[ "$output" != *" ok "* ]]
   [[ "$output" == *"reserved/placeholder domain"* ]]
-  [[ "$output" == *"preflight: 0 error(s), 2 warning(s)"* ]]
+  [[ "$output" == *"BACKUP_HEALTHCHECK_URL is empty"* ]]
+  [[ "$output" == *"preflight: 0 error(s), 3 warning(s)"* ]]
+}
+
+@test "an empty backup monitor URL is a warning, not an error" {
+  preflight
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"BACKUP_HEALTHCHECK_URL is empty"* ]]
+}
+
+@test "a configured https monitor URL passes and is never printed" {
+  set_env BACKUP_HEALTHCHECK_URL "https://hc-ping.com/0f3c9a7e-token-value"
+  preflight
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"backup monitor ping is configured"* ]]
+  [[ "$output" != *"token-value"* ]]
+}
+
+@test "monitor URLs must be http(s) and http only warns" {
+  set_env BACKUP_HEALTHCHECK_URL "hc-ping.com/abc"
+  preflight
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"BACKUP_HEALTHCHECK_URL must be an http(s) URL"* ]]
+  set_env BACKUP_HEALTHCHECK_URL "http://kuma.internal.lan/api/push/abc"
+  preflight
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"BACKUP_HEALTHCHECK_URL uses plain http"* ]]
+}
+
+@test "a placeholder monitor URL is rejected" {
+  set_env BACKUP_HEALTHCHECK_URL "https://hc-ping.com/CHANGE_ME"
+  preflight
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"BACKUP_HEALTHCHECK_URL still contains a placeholder"* ]]
+}
+
+@test "a failure URL without a success URL warns" {
+  set_env BACKUP_HEALTHCHECK_FAIL_URL "https://hc-ping.com/abc/fail"
+  preflight
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"set without BACKUP_HEALTHCHECK_URL"* ]]
+}
+
+@test "BACKUP_MAX_AGE_HOURS must be a whole number" {
+  set_env BACKUP_MAX_AGE_HOURS 1d
+  preflight
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"BACKUP_MAX_AGE_HOURS '1d' must be a whole number"* ]]
+}
+
+@test "a weekly schedule with the daily age limit warns" {
+  set_env BACKUP_SCHEDULE "0 3 * * 0"
+  preflight
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"runs only on some weekdays but BACKUP_MAX_AGE_HOURS is 26"* ]]
+  set_env BACKUP_MAX_AGE_HOURS 170
+  preflight
+  [[ "$output" != *"runs only on some weekdays"* ]]
+}
+
+@test "a monthly schedule needs a month-long age limit" {
+  set_env BACKUP_SCHEDULE "@monthly"
+  set_env BACKUP_MAX_AGE_HOURS 170
+  preflight
+  [[ "$output" == *"runs only on some days of the month"* ]]
+  set_env BACKUP_MAX_AGE_HOURS 0
+  preflight
+  [[ "$output" != *"runs only on some days of the month"* ]]
 }

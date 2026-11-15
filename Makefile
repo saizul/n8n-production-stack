@@ -5,7 +5,7 @@ WORKERS ?= 2
 SERVICE ?=
 FILE ?= latest
 
-.PHONY: help init preflight up down restart logs ps backup restore restore-test update scale health config lint test
+.PHONY: help init preflight up down restart logs ps backup backup-status restore restore-test update scale health config lint test
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  \033[36m%-10s\033[0m %s\n", $$1, $$2}'
@@ -33,6 +33,9 @@ ps: ## Show service status and health
 
 backup: ## Run a backup now and copy it to ./backups
 	./scripts/backup.sh
+
+backup-status: ## Show backup freshness; exit 1 if the last run failed or is too old
+	./scripts/backup-status.sh
 
 restore: ## Restore a backup (FILE=latest | name | /path/to.dump)
 	./scripts/restore.sh $(FILE)

@@ -68,6 +68,8 @@ and update `POSTGRES_PASSWORD` in `.env`, then `make up`. Starting from scratch 
 - `make logs SERVICE=backup` shows each run. `docker compose exec backup ls -lh /backups` lists files.
 - The schedule uses the container timezone (`TZ` in `.env`).
 - `pg_dump: error: aborting because of server version mismatch`: the client in `backup/Dockerfile` must match the Postgres major version. Rebuild with `docker compose build --no-cache backup`.
+- `make backup-status` shows when the last backup succeeded or failed. A `backup` container in state `unhealthy` with Postgres up means the last run failed or is older than `BACKUP_MAX_AGE_HOURS`: read `make logs SERVICE=backup` for the `FAILED during: <step>` line, fix it and run `make backup` (a successful run clears the state). For weekly or monthly schedules raise `BACKUP_MAX_AGE_HOURS` (e.g. `170` or `745`).
+- Monitor never receives pings: the backup container needs outbound HTTPS (it is on the `edge` network). Test with `docker compose exec backup curl -fsS -o /dev/null "$BACKUP_HEALTHCHECK_URL" && echo ok`. Ping failures are logged as `monitor ping failed (non-fatal)` and do not fail the backup.
 - S3 upload errors: check `S3_PROVIDER`, `S3_ENDPOINT` (needed for non-AWS), region and key permissions. Test manually: `docker compose exec backup /usr/local/bin/dump.sh test`.
 
 ## Restore fails with "already exists" or lock errors

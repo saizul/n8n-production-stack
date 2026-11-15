@@ -16,6 +16,12 @@ if [ -n "${BACKUP_S3_BUCKET:-}" ]; then
   echo "[backup] remote upload enabled: s3://${BACKUP_S3_BUCKET}/${BACKUP_S3_PREFIX:-n8n}"
 fi
 
+if [ -n "${BACKUP_HEALTHCHECK_URL:-}" ]; then
+  # the URL usually embeds a token, so only report that monitoring is on
+  echo "[backup] monitor pings enabled (BACKUP_HEALTHCHECK_URL)"
+fi
+echo "[backup] container turns unhealthy if the last success is older than ${BACKUP_MAX_AGE_HOURS:-26}h (0 = never)"
+
 if [ "${BACKUP_ON_START:-false}" = "true" ]; then
   /usr/local/bin/dump.sh || echo "[backup] initial backup failed" >&2
 fi
